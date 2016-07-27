@@ -1,3 +1,9 @@
 # crunchbase_scraper
 Scrape companies funding info from crunchbase site
-test
+
+Installation
+==
+
+```bash
+pip3.5 install -r requirements.txt
+```
