@@ -16,10 +16,7 @@ class Company(Base):
     crunchbase_link = Column(String)
     site_link = Column(String)
     linkedin_link = Column(String)
-    effective_date = Column()
-    funding_date = Column(Date)
-    funding_round = Column(String)
-    funding_amount = Column(String)
+    effective_date = Column(Date)
     UniqueConstraint('company_id', 'effective_date')
 
     
