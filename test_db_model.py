@@ -1,4 +1,5 @@
 import unittest
+import yaml
 
 from sqlalchemy.orm import sessionmaker
 
@@ -12,13 +13,16 @@ class TestDBModel(unittest.TestCase):
         Session = sessionmaker(bind=engine)
         Session.configure(bind=engine) 
         self.session = Session()
+
+        with open('fixtures.yaml') as fin:
+            self.fixtures = yaml.load(fin)
     
     def tearDown(self):
         self.session.close()
         #Base.metadata.drop_all(engine)
  
     def test_add_company(self):
-        data = dict()
+        data = self.fixtures['companies'][0]
         company = Company(**data)
         
         self.session.add(company)
