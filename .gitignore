@@ -89,3 +89,4 @@ ENV/
 .ropeproject
 crunchbase.db
 .idea
+*.html

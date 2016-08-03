@@ -1,5 +1,8 @@
 import datetime
+import os
 import urlparse
+
+import re
 import requests
 
 from scrapy import Selector
@@ -12,8 +15,8 @@ from sqlalchemy.exc import IntegrityError
 from tables import Base, engine, Company, TeamMember, Funding
 
 
-XPATH_COMPANY_LIST = '//div[@class="info-block"]//a/@href'
-XPATH_COMPANY_FUNDING_DATE = '//h2[@class="title_date"]/text()'
+XPATH_COMPANY_LIST = '//div[@class="info-block"]/h4/a/@href'
+XPATH_COMPANY_FUNDING_DATE = '//h2[@class="title_date"]'
 XPATH_COMPANY_FUNDING_ROUND = '//table[@class="table container"]//a/text()'
 XPATH_COMPANY_FUNDING_AMOUNT = '//table[@class="table container"]//td/text()'
 XPATH_COMPANY_CRUNCHBASE_LINK = '//div[@class="info-block"]//a/@href'
@@ -30,7 +33,7 @@ XPATH_TEAM_MEMBER_LINKEDIN_LINK = '//dd[@class="social-links"]/a/@href'
 XPATH_TEAM_MEMBER_PERSONAL_DETAILS = '//div[@class="base info-tab description"]//div[@class="card-content box container card-slim"]//text()'
 
 base_url = 'https://www.crunchbase.com/'
-company_list_url = 'https://www.crunchbase.com/funding-rounds'
+funding_round_url = 'https://www.crunchbase.com/funding-rounds'
 
 headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/600.7.12 (KHTML, like Gecko) Version/8.0.7 Safari/600.7.12'}
 
@@ -45,36 +48,42 @@ browser = webdriver.Chrome()
 effective_date = datetime.datetime.now().date()
 
 
+def get_funding_dates():
+    sel = get_selector(funding_round_url)
+    return sel.xpath(XPATH_COMPANY_FUNDING_DATE)
+
+
 def get_selector(url):
     response = requests.get(url, headers=headers)
     rendered_content = render_content(response.content)
     return Selector(text=rendered_content)
+    # browser.get('file:///{}/raw_content.html'.format(os.getcwd()))
+    # return Selector(text=browser.page_source)
 
 
 def render_content(content):
     with open('raw_content.html', 'wb') as fout:
         fout.write(content)
 
-    browser.get("file:////raw_content.html")
+    browser.get('file:///{}/raw_content.html'.format(os.getcwd()))
 
     return browser.page_source
 
 
-def load_company_list():
-    sel = get_selector(company_list_url)
-    return sel.xpath(XPATH_COMPANY_LIST).extract()
+def load_company_list(sel):
+    return [urlparse.urljoin(base_url, item) for item in sel.xpath(XPATH_COMPANY_LIST).extract() if re.search('/organization/\S+', item)]
 
 
-def add_company(company_crunchbase_link):
+def add_company(company_crunchbase_link, funding_date):
     global effective_date
 
     sel = get_selector(company_crunchbase_link)
 
-    company = Company(name=sel.xpath(XPATH_COMPANY_NAME).extract(),
-                      description=sel.xpath().extract(),
-                      crunchbase_link=sel.xpath().extract(),
-                      site_link=sel.xpath().extract(),
-                      linkedin_link=sel.xpath().extract(),
+    company = Company(name=sel.xpath(XPATH_COMPANY_NAME).extract()[0],
+                      description=sel.xpath(XPATH_COMPANY_DESCRIPTION).extract()[0],
+                      crunchbase_link=company_crunchbase_link,
+                      site_link=sel.xpath(XPATH_COMPANY_SITE_LINK).extract()[0],
+                      linkedin_link=sel.xpath(XPATH_COMPANY_LINKEDIN_LINK).extract()[0],
                       effective_date=effective_date
                       )
 
@@ -86,7 +95,7 @@ def add_company(company_crunchbase_link):
         return None
 
     funging = Funding(company_id=company.company_id,
-                      funding_date=sel.xpath(XPATH_COMPANY_FUNDING_DATE).extract(),
+                      funding_date=funding_date,
                       funding_round=sel.xpath(XPATH_COMPANY_FUNDING_ROUND).extract(),
                       funding_amount=sel.xpath(XPATH_COMPANY_FUNDING_AMOUNT).extract()
                       )
@@ -117,10 +126,15 @@ def add_team_members(company_id, team_member_urls):
 
 
 def main():
-    company_list = load_company_list()
-    for company in company_list:
-        company_id, team_member_urls = add_company(company)
-        add_team_members(company_id, team_member_urls)
+    funding_dates = get_funding_dates()
+
+    for funding_block in funding_dates:
+        funding_date = funding_block.xpath('text()').extract()[0]
+        funding_date_date = datetime.datetime.strptime(funding_date, '%B %d, %Y').date()
+        company_list = load_company_list(funding_block)
+        for company_url in company_list:
+            company_id, team_member_urls = add_company(company_url, funding_date_date)
+            add_team_members(company_id, team_member_urls)
 
         
 if __name__ == '__main__':
