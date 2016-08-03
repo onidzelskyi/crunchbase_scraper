@@ -1,6 +1,9 @@
 import datetime
 import os
-import urlparse
+try:
+    import urlparse
+except ImportError:
+    from urllib.parse import urlparse
 
 import re
 import requests
@@ -8,6 +11,8 @@ import requests
 from scrapy import Selector
 
 from selenium import webdriver
+
+from pyvirtualdisplay import Display
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
@@ -43,6 +48,8 @@ Session = sessionmaker(bind=engine)
 Session.configure(bind=engine) 
 session = Session()
 
+display = Display(visible=0, size=(800, 600))
+display.start()
 browser = webdriver.Chrome()
 
 effective_date = datetime.datetime.now().date()

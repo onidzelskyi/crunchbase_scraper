@@ -4,3 +4,4 @@ selenium
 urlparse
 sqlalchemy
 unittest
+pyvirtualdisplay
