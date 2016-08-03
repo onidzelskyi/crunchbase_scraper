@@ -3,7 +3,7 @@ import os
 try:
     import urlparse
 except ImportError:
-    from urllib.parse import urlparse
+    import urllib.parse as urlparse
 
 import re
 import requests
