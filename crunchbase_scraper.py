@@ -30,9 +30,9 @@ XPATH_COMPANY_LINKEDIN_LINK = '//dd[@class="social-links"]//a[@class="icons link
 XPATH_COMPANY_NAME = '//h1[@id="profile_header_heading"]//a/text()'
 XPATH_COMPANY_DESCRIPTION = '//div[@class="definition-list container"]//dd[2]/text()'
 
-XPATH_TEAM_MEMBER_LIST = '//h4/div[@class="follow_card_wrapper"]/div[@class="link_container"]/a[@data-type="person"][@class="follow_card"]/@href'
-XPATH_TEAM_MEMBER_FULL_NAME = '//h1[@id="profile_header_heading"]//a/text()'
-XPATH_TEAM_MEMBER_POSITION = '//div[@class="overview-stats"]//dd/text()'
+XPATH_TEAM_MEMBER_LIST = '//div[@class="base info-tab people"]//ul[@class="section-list container"]/li'
+XPATH_TEAM_MEMBER_FULL_NAME = '//div[@class="info-block"]/div[@class="large"]//a[@class="follow_card"]/text()'
+XPATH_TEAM_MEMBER_POSITION = '//div[@class="info-block"]/div[@class="large"]/h5/text()'
 XPATH_TEAM_MEMBER_CRUNCHBASE_LINK = '//h4/div[@class="follow_card_wrapper"]/div[@class="link_container"]/a[@data-type="person"][@class="follow_card"]/@href'
 XPATH_TEAM_MEMBER_LINKEDIN_LINK = '//dd[@class="social-links"]/a/@href'
 XPATH_TEAM_MEMBER_PERSONAL_DETAILS = '//div[@class="base info-tab description"]//div[@class="card-content box container card-slim"]//text()'
@@ -53,6 +53,20 @@ display.start()
 browser = webdriver.Chrome()
 
 effective_date = datetime.datetime.now().date()
+
+
+def get_next_company_id():
+    get_next_company_id.next_id += 1
+    return get_next_company_id.next_id
+
+
+get_next_company_id.next_id = 0
+
+def get_funding_date(funding_block):
+    try:
+        return datetime.datetime.strptime(funding_block.xpath('text()').extract(), '%B %d, %Y').date()
+    except (TypeError, IndexError):
+        return None
 
 
 def get_funding_dates():
@@ -86,27 +100,29 @@ def add_company(company_crunchbase_link, funding_date):
 
     sel = get_selector(company_crunchbase_link)
 
-    company = Company(name=sel.xpath(XPATH_COMPANY_NAME).extract()[0],
-                      description=sel.xpath(XPATH_COMPANY_DESCRIPTION).extract()[0],
+    name=sel.xpath(XPATH_COMPANY_NAME).extract()
+    description=sel.xpath(XPATH_COMPANY_DESCRIPTION).extract()
+    site_link=sel.xpath(XPATH_COMPANY_SITE_LINK).extract()
+    linkedin_link=sel.xpath(XPATH_COMPANY_LINKEDIN_LINK).extract()
+    funding_round = sel.xpath(XPATH_COMPANY_FUNDING_ROUND).extract(),
+    funding_amount = sel.xpath(XPATH_COMPANY_FUNDING_AMOUNT).extract()
+
+    company = Company(company_id=get_next_company_id(),
+                      name=name[0] if name else None,
+                      description=description[0] if description else None,
                       crunchbase_link=company_crunchbase_link,
-                      site_link=sel.xpath(XPATH_COMPANY_SITE_LINK).extract()[0],
-                      linkedin_link=sel.xpath(XPATH_COMPANY_LINKEDIN_LINK).extract()[0],
+                      site_link=site_link[0] if site_link else None,
+                      linkedin_link=linkedin_link[0] if linkedin_link else None,
                       effective_date=effective_date
                       )
 
-    session.add(company)
-
-    try:
-        session.commit()
-    except IntegrityError:
-        return None
-
     funging = Funding(company_id=company.company_id,
                       funding_date=funding_date,
-                      funding_round=sel.xpath(XPATH_COMPANY_FUNDING_ROUND).extract(),
-                      funding_amount=sel.xpath(XPATH_COMPANY_FUNDING_AMOUNT).extract()
+                      funding_round=funding_round[0] if funding_round else None,
+                      funding_amount=funding_amount[0] if funding_amount else None
                       )
 
+    session.add(company)
     session.add(funging)
 
     try:
@@ -114,21 +130,33 @@ def add_company(company_crunchbase_link, funding_date):
     except IntegrityError:
         return None
 
-    team_member_urls = sel.xpath(XPATH_TEAM_MEMBER_LIST).extract()
+    team_members = []
+    for team_member_block in sel.xpath(XPATH_TEAM_MEMBER_LIST):
+        team_member_url = team_member_block.xpath().extract()
+        full_name = team_member_block.xpath(XPATH_TEAM_MEMBER_FULL_NAME).extract()
+        position = team_member_block.xpath(XPATH_TEAM_MEMBER_POSITION).extract()
+        team_members.append(dict(team_member_url=urlparse.urljoin(base_url, team_member_url[0]) if team_member_url else None,
+                                 full_name=full_name[0] if full_name else None,
+                                 position=position[0] if position else None))
 
-    return company.company_id, [urlparse.urljoin(base_url, team_member_url) for team_member_url in team_member_urls]
+    return company.company_id, team_members
 
 
 def add_team_members(company_id, team_member_urls):
     for team_member_url in team_member_urls:
         sel = get_selector(team_member_url)
 
+        full_name = sel.xpath(XPATH_TEAM_MEMBER_FULL_NAME).extract(),
+        position = sel.xpath(XPATH_TEAM_MEMBER_POSITION).extract(),
+        linkedin_link = sel.xpath(XPATH_TEAM_MEMBER_LINKEDIN_LINK).extract(),
+        personal_details = sel.xpath(XPATH_TEAM_MEMBER_PERSONAL_DETAILS).extract()
+
         TeamMember(company_id=company_id,
-                   full_name=sel.xpath(XPATH_TEAM_MEMBER_FULL_NAME).extract(),
-                   position=sel.xpath(XPATH_TEAM_MEMBER_POSITION).extract(),
+                   full_name=full_name[0] if full_name else None,
+                   position=position[0] if position else None,
                    crunchbase_link=team_member_url,
-                   linkedin_link=sel.xpath(XPATH_TEAM_MEMBER_LINKEDIN_LINK).extract(),
-                   personal_details=sel.xpath(XPATH_TEAM_MEMBER_PERSONAL_DETAILS).extract()
+                   linkedin_link=linkedin_link[0] if linkedin_link else None,
+                   personal_details=personal_details[0] if personal_details else None
                    )
 
 
@@ -136,11 +164,10 @@ def main():
     funding_dates = get_funding_dates()
 
     for funding_block in funding_dates:
-        funding_date = funding_block.xpath('text()').extract()[0]
-        funding_date_date = datetime.datetime.strptime(funding_date, '%B %d, %Y').date()
+        funding_date = get_funding_date(funding_block)
         company_list = load_company_list(funding_block)
         for company_url in company_list:
-            company_id, team_member_urls = add_company(company_url, funding_date_date)
+            company_id, team_member_urls = add_company(company_url, funding_date)
             add_team_members(company_id, team_member_urls)
 
         

@@ -11,7 +11,7 @@ class Company(Base):
     __tablename__ = 'companies'
 
     company_id = Column(Integer, primary_key=True)
-    name = Column(String)
+    name = Column(String, nullable=False)
     description = Column(String)
     crunchbase_link = Column(String)
     site_link = Column(String)
@@ -39,7 +39,7 @@ class TeamMember(Base):
 class Funding(Base):
     __tablename__ = 'fundings'
 
-    funding_id = Column(Integer, primary_key=True)
+    funding_id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey('companies.company_id'), nullable=False)
     funding_date = Column(Date)
     funding_round = Column(String)
