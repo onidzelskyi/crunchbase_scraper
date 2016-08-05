@@ -89,6 +89,5 @@ ENV/
 .ropeproject
 crunchbase.db
 .idea
-*.html
 chromedriver*
 google*

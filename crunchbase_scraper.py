@@ -33,7 +33,7 @@ XPATH_COMPANY_DESCRIPTION = '//div[@class="definition-list container"]//dd[2]/te
 XPATH_TEAM_MEMBER_LIST = '//div[@class="base info-tab people"]//ul[@class="section-list container"]/li'
 XPATH_TEAM_MEMBER_FULL_NAME = '//div[@class="info-block"]/div[@class="large"]//a[@class="follow_card"]/text()'
 XPATH_TEAM_MEMBER_POSITION = '//div[@class="info-block"]/div[@class="large"]/h5/text()'
-XPATH_TEAM_MEMBER_CRUNCHBASE_LINK = '//h4/div[@class="follow_card_wrapper"]/div[@class="link_container"]/a[@data-type="person"][@class="follow_card"]/@href'
+XPATH_TEAM_MEMBER_CRUNCHBASE_LINK = '//h4/a[@data-type="person"][@class="follow_card"]/@href'
 XPATH_TEAM_MEMBER_LINKEDIN_LINK = '//dd[@class="social-links"]/a/@href'
 XPATH_TEAM_MEMBER_PERSONAL_DETAILS = '//div[@class="base info-tab description"]//div[@class="card-content box container card-slim"]//text()'
 
