@@ -23,7 +23,7 @@ from tables import Base, engine, Company, TeamMember, Funding
 XPATH_COMPANY_LIST = '//div[@class="info-block"]/h4/a/@href'
 XPATH_COMPANY_FUNDING_DATE = '//h2[@class="title_date"]'
 XPATH_COMPANY_FUNDING_ROUND = '//table[@class="table container"]//a/text()'
-XPATH_COMPANY_FUNDING_AMOUNT = '//table[@class="table container"]//td/text()'
+XPATH_COMPANY_FUNDING_AMOUNT = '//table[@class="table container"]//td[2]/text()'
 XPATH_COMPANY_CRUNCHBASE_LINK = '//div[@class="info-block"]//a/@href'
 XPATH_COMPANY_SITE_LINK = '//div[@class="definition-list container"]//dd[5]/a/@href'
 XPATH_COMPANY_LINKEDIN_LINK = '//dd[@class="social-links"]//a[@class="icons linkedin"]/@href'
@@ -40,8 +40,8 @@ XPATH_TEAM_MEMBER_PERSONAL_DETAILS = '//div[@class="base info-tab description"]/
 base_url = 'https://www.crunchbase.com/'
 funding_round_url = 'https://www.crunchbase.com/funding-rounds'
 
-headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/600.7.12 (KHTML, like Gecko) Version/8.0.7 Safari/600.7.12'}
-
+headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36'}
+# headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/600.7.12 (KHTML, like Gecko) Version/8.0.7 Safari/600.7.12'}
 
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
@@ -62,9 +62,10 @@ def get_next_company_id():
 
 get_next_company_id.next_id = 0
 
+
 def get_funding_date(funding_block):
     try:
-        return datetime.datetime.strptime(funding_block.xpath('text()').extract(), '%B %d, %Y').date()
+        return datetime.datetime.strptime(funding_block.xpath('text()').extract_first(), '%B %d, %Y').date()
     except (TypeError, IndexError):
         return None
 
@@ -78,8 +79,6 @@ def get_selector(url):
     response = requests.get(url, headers=headers)
     rendered_content = render_content(response.content)
     return Selector(text=rendered_content)
-    # browser.get('file:///{}/raw_content.html'.format(os.getcwd()))
-    # return Selector(text=browser.page_source)
 
 
 def render_content(content):
@@ -100,26 +99,19 @@ def add_company(company_crunchbase_link, funding_date):
 
     sel = get_selector(company_crunchbase_link)
 
-    name=sel.xpath(XPATH_COMPANY_NAME).extract()
-    description=sel.xpath(XPATH_COMPANY_DESCRIPTION).extract()
-    site_link=sel.xpath(XPATH_COMPANY_SITE_LINK).extract()
-    linkedin_link=sel.xpath(XPATH_COMPANY_LINKEDIN_LINK).extract()
-    funding_round = sel.xpath(XPATH_COMPANY_FUNDING_ROUND).extract(),
-    funding_amount = sel.xpath(XPATH_COMPANY_FUNDING_AMOUNT).extract()
-
     company = Company(company_id=get_next_company_id(),
-                      name=name[0] if name else None,
-                      description=description[0] if description else None,
+                      name=sel.xpath(XPATH_COMPANY_NAME).extract_first(),
+                      description=sel.xpath(XPATH_COMPANY_DESCRIPTION).extract_first(),
                       crunchbase_link=company_crunchbase_link,
-                      site_link=site_link[0] if site_link else None,
-                      linkedin_link=linkedin_link[0] if linkedin_link else None,
+                      site_link=sel.xpath(XPATH_COMPANY_SITE_LINK).extract_first(),
+                      linkedin_link=sel.xpath(XPATH_COMPANY_LINKEDIN_LINK).extract_first(),
                       effective_date=effective_date
                       )
 
     funging = Funding(company_id=company.company_id,
                       funding_date=funding_date,
-                      funding_round=funding_round[0] if funding_round else None,
-                      funding_amount=funding_amount[0] if funding_amount else None
+                      funding_round=sel.xpath(XPATH_COMPANY_FUNDING_ROUND).extract_first(),
+                      funding_amount=sel.xpath(XPATH_COMPANY_FUNDING_AMOUNT).extract_first()
                       )
 
     session.add(company)
