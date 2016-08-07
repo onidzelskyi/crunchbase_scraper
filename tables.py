@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, Date, ForeignKey, UniqueConstraint, ForeignKeyConstraint
 
 
-engine = create_engine('sqlite:///crunchbase.db', echo=True)
+engine = create_engine('sqlite:///crunchbase.db', echo=False)
 Base = declarative_base()
 
 
@@ -19,6 +19,8 @@ class Company(Base):
     effective_date = Column(Date)
     UniqueConstraint('company_id', 'effective_date')
 
+    def __repr__(self):
+        return 'name: {self.name}\ndescription: {self.description}\ncrunchbase_link: {self.crunchbase_link}\nsite_link: {self.site_link}\nlinkedin_link: {self.linkedin_link}'.format(self=self)
     
 class TeamMember(Base):
     __tablename__ = 'team_members'
@@ -34,12 +36,15 @@ class TeamMember(Base):
     ForeignKeyConstraint(['company_id', 'effective_date', 'member_id'], 
                          ['companies.company_id', 'companies.effective_date', 'fundings.funding_id'])
 
+    def __repr__(self):
+        return 'full_name: {self.full_name}\nposition: {self.position}\ncrunchbase_link: {self.crunchbase_link}\nlinkedin_link: {self.linkedin_link}\npersonal_details: {self.personal_details}'.format(
+            self=self)
 
 
 class Funding(Base):
     __tablename__ = 'fundings'
 
-    funding_id = Column(Integer, primary_key=True, autoincrement=True)
+    funding_id = Column(Integer, primary_key=True)
     company_id = Column(Integer, ForeignKey('companies.company_id'), nullable=False)
     funding_date = Column(Date)
     funding_round = Column(String)
@@ -47,3 +52,6 @@ class Funding(Base):
     UniqueConstraint('company_id', 'funding_id')
     ForeignKeyConstraint(['company_id', 'funding_id'],
                          ['companies.company_id', 'fundings.funding_id'])
+
+    def __repr__(self):
+        return 'funding_date: {self.funding_date}\nfunding_round: {self.funding_round}\nfunding_amount: {self.funding_amount}'.format(self=self)
