@@ -16,6 +16,8 @@ from selenium import webdriver
 
 from pyvirtualdisplay import Display
 
+from itertools import izip_longest
+
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -41,11 +43,14 @@ XPATH_TEAM_MEMBER_PERSONAL_DETAILS = '//div[@class="base info-tab description"]/
 
 base_url = 'https://www.crunchbase.com/'
 funding_round_url = 'https://www.crunchbase.com/funding-rounds'
+referer = None
 
 user_agents = dict(chrome='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36',
                    safari='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/600.7.12 (KHTML, like Gecko) Version/8.0.7 Safari/600.7.12')
 
-headers = {'User-Agent': user_agents['safari']}
+headers = {'User-Agent': user_agents['safari'],
+           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+           'Cache-Control': 'max-age=0'}
 
 logging.basicConfig(filename='crunchbase.log',
                     format='%(levelname)s:%(asctime)s %(message)s',
@@ -61,8 +66,6 @@ display = Display(visible=0, size=(800, 600))
 display.start()
 browser = webdriver.Chrome()
 
-effective_date = datetime.datetime.now().date()
-
 
 def get_funding_date(funding_block):
     try:
@@ -72,13 +75,20 @@ def get_funding_date(funding_block):
 
 
 def get_funding_dates():
-    sel = get_selector(funding_round_url)
+    sel = get_selector(funding_round_url, referer=referer)
     return sel.xpath(XPATH_COMPANY_FUNDING_DATE)
 
 
-def get_selector(url):
+def get_selector(url, referer=None):
     time.sleep(60)
-    logging.info('Get url: %s', url)
+
+    if referer:
+        headers['Referer'] = referer
+
+    logging.info('Get url')
+    logging.info('url: %s', url)
+    logging.info('headers: %s', headers)
+
     response = requests.get(url, headers=headers)
     rendered_content = render_content(response.content)
     return Selector(text=rendered_content)
@@ -98,16 +108,17 @@ def load_company_list(sel):
 
 
 def add_company(company_crunchbase_link, funding_date):
-    global effective_date
+    logging.info('Process company url: %s', company_crunchbase_link)
+    logging.info('Company funding date: %s', funding_date)
 
-    sel = get_selector(company_crunchbase_link)
+    sel = get_selector(company_crunchbase_link, referer=funding_round_url)
 
     company = Company(name=sel.xpath(XPATH_COMPANY_NAME).extract_first(),
                       description=sel.xpath(XPATH_COMPANY_DESCRIPTION).extract_first(),
                       crunchbase_link=company_crunchbase_link,
                       site_link=sel.xpath(XPATH_COMPANY_SITE_LINK).extract_first(),
                       linkedin_link=sel.xpath(XPATH_COMPANY_LINKEDIN_LINK).extract_first(),
-                      effective_date=effective_date
+                      funding_date=funding_date
                       )
 
     session.add(company)
@@ -138,30 +149,39 @@ def add_company(company_crunchbase_link, funding_date):
         logging.error('company %s or funding %s cannot be inserted into DB. Error: %s', company, funging, err)
 
     block = sel.xpath(XPATH_TEAM_MEMBER_LIST)
-    team_members = zip([urlparse.urljoin(base_url, item) for item in block.xpath(XPATH_TEAM_MEMBER_CRUNCHBASE_LINK).extract()],
+    team_members = list(izip_longest([urlparse.urljoin(base_url, item) for item in block.xpath(XPATH_TEAM_MEMBER_CRUNCHBASE_LINK).extract()],
                        block.xpath(XPATH_TEAM_MEMBER_FULL_NAME).extract(),
-                       block.xpath(XPATH_TEAM_MEMBER_POSITION).extract())
+                       block.xpath(XPATH_TEAM_MEMBER_POSITION).extract(),
+                       [company_crunchbase_link],
+                       fillvalue=company_crunchbase_link))
+
+    logging.info('Company team members: %s', team_members)
 
     return company.company_id, team_members
 
 
 def add_team_members(company_id, team_member_infos):
-    logging.info('Company team members:')
+    logging.info('Processing company team members:')
 
     for team_member_info in team_member_infos:
-        sel = get_selector(team_member_info[0])
+        logging.info('Team member info: %s', team_member_info)
+
+        sel = get_selector(team_member_info[0], referer=team_member_info[3])
 
         full_name = team_member_info[1],
         position = team_member_info[2],
         linkedin_link = sel.xpath(XPATH_TEAM_MEMBER_LINKEDIN_LINK).extract_first(),
         personal_details = sel.xpath(XPATH_TEAM_MEMBER_PERSONAL_DETAILS).extract_first()
 
+        if personal_details == 'Click/Touch ':
+            personal_details = None
+
         team_member = TeamMember(company_id=company_id,
-                                 full_name=full_name,
-                                 position=position,
-                                 crunchbase_link=team_member_info[0],
-                                 linkedin_link=linkedin_link,
-                                 personal_details=personal_details)
+                                 full_name=full_name[0] if isinstance(full_name, tuple) else full_name,
+                                 position=position[0] if isinstance(position, tuple) else position,
+                                 crunchbase_link=team_member_info[0][0] if isinstance(team_member_info[0], tuple) else team_member_info[0],
+                                 linkedin_link=linkedin_link[0] if isinstance(linkedin_link, tuple) else linkedin_link,
+                                 personal_details=personal_details[0] if isinstance(personal_details, tuple) else personal_details)
 
         logging.info('Team member full_name: %s', team_member.full_name)
         logging.info('Team member position: %s', team_member.position)
@@ -174,7 +194,7 @@ def add_team_members(company_id, team_member_infos):
     try:
         session.commit()
     except SQLAlchemyError as err:
-        logging.error('Team member %s cannot be inserted into DB. Error: %s', team_member, err)
+        logging.error('Team member %s cannot be inserted into DB. Error: %s', team_member.full_name, err)
 
 
 def main():
@@ -182,8 +202,11 @@ def main():
 
     for funding_block in funding_dates:
         funding_date = get_funding_date(funding_block)
-        logging.info('Funding date: %s', funding_date)
         company_list = load_company_list(funding_block)
+
+        logging.info('Funding date: %s', funding_date)
+        logging.info('Company list: %s', company_list)
+
         for company_url in company_list:
             company_id, team_members = add_company(company_url, funding_date)
             add_team_members(company_id, team_members)
