@@ -56,8 +56,8 @@ headers = {'User-Agent': user_agents['safari'],
            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
            'Cache-Control': 'max-age=0'}
 
-MIN_TIMEOUT = 60
-MAX_TIMEOUT = 120
+MIN_TIMEOUT = 120
+MAX_TIMEOUT = 180
 
 logging.basicConfig(filename='crunchbase.log',
                     format='%(levelname)s:%(asctime)s %(message)s',
@@ -101,7 +101,7 @@ def get_selector(url, referer=None):
     sel = Selector(text=rendered_content)
 
     # Check if content was blocked
-    if not sel.xpath(XPATH_CONTENT_BLOCKED).extract_first():
+    if sel.xpath(XPATH_CONTENT_BLOCKED).extract_first():
         raise IOError('content was blocked.')
 
     return sel
