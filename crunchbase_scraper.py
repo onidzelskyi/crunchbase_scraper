@@ -101,7 +101,7 @@ def get_selector(url, referer=None):
     sel = Selector(text=rendered_content)
 
     # Check if content was blocked
-    if not sel.xpath(XPATH_CONTENT_BLOCKED).extract_first()
+    if not sel.xpath(XPATH_CONTENT_BLOCKED).extract_first():
         raise IOError('content was blocked.')
 
     return sel
