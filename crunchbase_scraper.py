@@ -1,6 +1,8 @@
 import datetime
 import os
 import time
+import random
+
 try:
     import urlparse
 except ImportError:
@@ -29,7 +31,7 @@ XPATH_COMPANY_FUNDING_DATE = '//h2[@class="title_date"]'
 XPATH_COMPANY_FUNDING_ROUND = '//table[@class="table container"]//a/text()'
 XPATH_COMPANY_FUNDING_AMOUNT = '//table[@class="table container"]//td[2]/text()'
 XPATH_COMPANY_CRUNCHBASE_LINK = '//div[@class="info-block"]//a/@href'
-XPATH_COMPANY_SITE_LINK = '//div[@class="definition-list container"]//dd[5]/a/@href'
+XPATH_COMPANY_SITE_LINK = '//div[@class="definition-list container"]//dd//a[@target="_blank"]/@href'
 XPATH_COMPANY_LINKEDIN_LINK = '//dd[@class="social-links"]//a[@class="icons linkedin"]/@href'
 XPATH_COMPANY_NAME = '//h1[@id="profile_header_heading"]//a/text()'
 XPATH_COMPANY_DESCRIPTION = '//div[@class="definition-list container"]//dd[2]/text()'
@@ -37,9 +39,11 @@ XPATH_COMPANY_DESCRIPTION = '//div[@class="definition-list container"]//dd[2]/te
 XPATH_TEAM_MEMBER_LIST = '//div[@class="base info-tab people"]//ul[@class="section-list container"]'
 XPATH_TEAM_MEMBER_FULL_NAME = '//div[@class="info-block"]/div[@class="large"]//a[@class="follow_card"]/text()'
 XPATH_TEAM_MEMBER_POSITION = '//div[@class="info-block"]/div[@class="large"]/h5/text()'
-XPATH_TEAM_MEMBER_CRUNCHBASE_LINK = '//h4/a[@data-type="person"][@class="follow_card"]/@href'
+XPATH_TEAM_MEMBER_CRUNCHBASE_LINK = '//div[@class="base info-tab people"]//div[@class="info-block"]//a/@href'
 XPATH_TEAM_MEMBER_LINKEDIN_LINK = '//dd[@class="social-links"]/a[contains(@href, "linkedin")]/@href'
 XPATH_TEAM_MEMBER_PERSONAL_DETAILS = '//div[@class="base info-tab description"]//div[@class="card-content box container card-slim"]//text()'
+
+XPATH_CONTENT_BLOCKED = '//meta[contains(@content, "blocked")]'
 
 base_url = 'https://www.crunchbase.com/'
 funding_round_url = 'https://www.crunchbase.com/funding-rounds'
@@ -51,6 +55,9 @@ user_agents = dict(chrome='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) Apple
 headers = {'User-Agent': user_agents['safari'],
            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
            'Cache-Control': 'max-age=0'}
+
+MIN_TIMEOUT = 60
+MAX_TIMEOUT = 120
 
 logging.basicConfig(filename='crunchbase.log',
                     format='%(levelname)s:%(asctime)s %(message)s',
@@ -80,7 +87,7 @@ def get_funding_dates():
 
 
 def get_selector(url, referer=None):
-    time.sleep(60)
+    time.sleep(random.randint(MIN_TIMEOUT, MAX_TIMEOUT))
 
     if referer:
         headers['Referer'] = referer
@@ -91,7 +98,13 @@ def get_selector(url, referer=None):
 
     response = requests.get(url, headers=headers)
     rendered_content = render_content(response.content)
-    return Selector(text=rendered_content)
+    sel = Selector(text=rendered_content)
+
+    # Check if content was blocked
+    if not sel.xpath(XPATH_CONTENT_BLOCKED).extract_first()
+        raise IOError('content was blocked.')
+
+    return sel
 
 
 def render_content(content):
@@ -149,11 +162,16 @@ def add_company(company_crunchbase_link, funding_date):
         logging.error('company %s or funding %s cannot be inserted into DB. Error: %s', company, funging, err)
 
     block = sel.xpath(XPATH_TEAM_MEMBER_LIST)
-    team_members = list(izip_longest([urlparse.urljoin(base_url, item) for item in block.xpath(XPATH_TEAM_MEMBER_CRUNCHBASE_LINK).extract()],
-                       block.xpath(XPATH_TEAM_MEMBER_FULL_NAME).extract(),
-                       block.xpath(XPATH_TEAM_MEMBER_POSITION).extract(),
-                       [company_crunchbase_link],
-                       fillvalue=company_crunchbase_link))
+
+    team_member_urls = [urlparse.urljoin(base_url, '{}{}'.format(item,'#/entity')) for item in block.xpath(XPATH_TEAM_MEMBER_CRUNCHBASE_LINK).extract()]
+
+    team_members = []
+    if team_member_urls:
+        team_members = list(izip_longest(team_member_urls,
+                           block.xpath(XPATH_TEAM_MEMBER_FULL_NAME).extract(),
+                           block.xpath(XPATH_TEAM_MEMBER_POSITION).extract(),
+                           [company_crunchbase_link],
+                           fillvalue=company_crunchbase_link))
 
     logging.info('Company team members: %s', team_members)
 
