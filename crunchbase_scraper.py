@@ -8,6 +8,11 @@ try:
 except ImportError:
     import urllib.parse as urlparse
 
+try:
+    from itertools import izip_longest
+except ImportError:
+    from itertools import zip_longest as izip_longest
+
 import requests
 
 import logging
@@ -18,7 +23,6 @@ from selenium import webdriver
 
 from pyvirtualdisplay import Display
 
-from itertools import izip_longest
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
@@ -56,8 +60,8 @@ headers = {'User-Agent': user_agents['safari'],
            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
            'Cache-Control': 'max-age=0'}
 
-MIN_TIMEOUT = 120
-MAX_TIMEOUT = 180
+MIN_TIMEOUT = 180
+MAX_TIMEOUT = 240
 
 logging.basicConfig(filename='crunchbase.log',
                     format='%(levelname)s:%(asctime)s %(message)s',
