@@ -56,7 +56,7 @@ referer = None
 user_agents = dict(chrome='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36',
                    safari='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/600.7.12 (KHTML, like Gecko) Version/8.0.7 Safari/600.7.12')
 
-headers = {'User-Agent': user_agents['safari'],
+headers = {'User-Agent': user_agents['chrome'],
            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
            'Cache-Control': 'max-age=0'}
 
@@ -106,6 +106,7 @@ def get_selector(url, referer=None):
 
     # Check if content was blocked
     if sel.xpath(XPATH_CONTENT_BLOCKED).extract_first():
+        logging.error('Content was blocked. Exit')
         raise IOError('content was blocked.')
 
     return sel
