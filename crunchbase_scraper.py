@@ -13,7 +13,7 @@ try:
 except ImportError:
     from itertools import zip_longest as izip_longest
 
-import requests
+from requests import Request, Session
 
 import logging
 
@@ -47,7 +47,9 @@ XPATH_TEAM_MEMBER_CRUNCHBASE_LINK = '//div[@class="base info-tab people"]//div[@
 XPATH_TEAM_MEMBER_LINKEDIN_LINK = '//dd[@class="social-links"]/a[contains(@href, "linkedin")]/@href'
 XPATH_TEAM_MEMBER_PERSONAL_DETAILS = '//div[@class="base info-tab description"]//div[@class="card-content box container card-slim"]//text()'
 
-XPATH_CONTENT_BLOCKED = '//meta[contains(@content, "blocked")]'
+XPATH_CONTENT_BLOCKED_1 = '//meta[contains(@content, "blocked")]'
+XPATH_CONTENT_BLOCKED_2 = '//h1[contains(., "Pardon Our Interruption...")]/text()'
+
 
 base_url = 'https://www.crunchbase.com/'
 funding_round_url = 'https://www.crunchbase.com/funding-rounds'
@@ -57,8 +59,15 @@ user_agents = dict(chrome='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) Apple
                    safari='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_4) AppleWebKit/600.7.12 (KHTML, like Gecko) Version/8.0.7 Safari/600.7.12')
 
 headers = {'User-Agent': user_agents['chrome'],
-           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-           'Cache-Control': 'max-age=0'}
+           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+           'Accept-Encoding': 'gzip, deflate, sdch, br',
+           'Accept-Language': 'en-US,en;q=0.8',
+           'Cache-Control': 'max-age=0',
+           'Connection': 'keep-alive',
+           'Host': 'www.crunchbase.com',
+           'Referer': funding_round_url,
+           'Upgrade-Insecure-Requests': 1,
+           'Origin': base_url}
 
 MIN_TIMEOUT = 180
 MAX_TIMEOUT = 240
@@ -69,13 +78,29 @@ logging.basicConfig(filename='crunchbase.log',
                     level=logging.INFO)
 
 Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
-Session.configure(bind=engine) 
-session = Session()
+DB_Session = sessionmaker(bind=engine)
+DB_Session.configure(bind=engine)
+db_session = DB_Session()
 
 display = Display(visible=0, size=(800, 600))
 display.start()
 browser = webdriver.Chrome()
+# browser.delete_all_cookies()
+
+# Request section
+# request_session = Session()
+logging.info('Get url')
+logging.info('url: %s', base_url)
+logging.info('headers: %s', headers)
+
+# req = Request('GET', base_url)
+# prepped = req.prepare()
+# prepped.headers = headers
+
+# Make first request
+# response = request_session.send(prepped)
+#
+# logging.info('cookies: %s', response.cookies)
 
 
 def get_funding_date(funding_block):
@@ -91,34 +116,50 @@ def get_funding_dates():
 
 
 def get_selector(url, referer=None):
-    time.sleep(random.randint(MIN_TIMEOUT, MAX_TIMEOUT))
+    global response
 
-    if referer:
-        headers['Referer'] = referer
+    # time.sleep(random.randint(MIN_TIMEOUT, MAX_TIMEOUT))
+
+    # if referer:
+    #     headers['Referer'] = referer
 
     logging.info('Get url')
     logging.info('url: %s', url)
-    logging.info('headers: %s', headers)
+    # logging.info('headers: %s', headers)
+    # logging.info('cookies: %s', response.cookies)
 
-    response = requests.get(url, headers=headers)
-    rendered_content = render_content(response.content)
+    # req = Request('GET', url, cookies=response.cookies if response else None)
+    # prepped = req.prepare()
+    # prepped.headers = headers
+
+    # Make request
+    # response = request_session.send(prepped)
+
+    # rendered_content = render_content(response.content)
+
+    # Set cookies if exist
+    for cookie in browser.get_cookies():
+        browser.add_cookie({'name': cookie['name'], 'value': cookie['value']})
+
+    browser.get(url)
+    rendered_content = browser.page_source
     sel = Selector(text=rendered_content)
 
     # Check if content was blocked
-    if sel.xpath(XPATH_CONTENT_BLOCKED).extract_first():
+    if any(map(sel.xpath, [XPATH_CONTENT_BLOCKED_1, XPATH_CONTENT_BLOCKED_2])):
         logging.error('Content was blocked. Exit')
         raise IOError('content was blocked.')
 
     return sel
 
 
-def render_content(content):
-    with open('raw_content.html', 'wb') as fout:
-        fout.write(content)
-
-    browser.get('file:///{}/raw_content.html'.format(os.getcwd()))
-
-    return browser.page_source
+# def render_content(content):
+#     with open('raw_content.html', 'wb') as fout:
+#         fout.write(content)
+#
+#     browser.get('file:///{}/raw_content.html'.format(os.getcwd()))
+#
+#     return browser.page_source
 
 
 def load_company_list(sel):
@@ -139,8 +180,14 @@ def add_company(company_crunchbase_link, funding_date):
                       funding_date=funding_date
                       )
 
-    session.add(company)
-    session.flush()
+    logging.info('Company name: %s', company.name)
+    logging.info('Company description: %s', company.description)
+    logging.info('Company crunchbase_link: %s', company.crunchbase_link)
+    logging.info('Company site_link: %s', company.site_link)
+    logging.info('Company linkedin_link: %s', company.linkedin_link)
+
+    db_session.add(company)
+    db_session.flush()
 
     funging = Funding(company_id=company.company_id,
                       funding_date=funding_date,
@@ -148,21 +195,14 @@ def add_company(company_crunchbase_link, funding_date):
                       funding_amount=sel.xpath(XPATH_COMPANY_FUNDING_AMOUNT).extract_first()
                       )
 
-    logging.info('Company name: %s', company.name)
-    logging.info('Company description: %s', company.description)
-    logging.info('Company crunchbase_link: %s', company.crunchbase_link)
-    logging.info('Company site_link: %s', company.site_link)
-    logging.info('Company linkedin_link: %s', company.linkedin_link)
-
     logging.info('Company funding date: %s', funging.funding_date)
     logging.info('Company funding round: %s', funging.funding_round)
     logging.info('Company funding amount: %s', funging.funding_amount)
 
-    session.add(company)
-    session.add(funging)
+    db_session.add(funging)
 
     try:
-        session.commit()
+        db_session.commit()
     except SQLAlchemyError as err:
         logging.error('company %s or funding %s cannot be inserted into DB. Error: %s', company, funging, err)
 
@@ -212,10 +252,10 @@ def add_team_members(company_id, team_member_infos):
         logging.info('Team member linkedin_link: %s', team_member.linkedin_link)
         logging.info('Team member personal_details: %s', team_member.personal_details)
 
-        session.add(team_member)
+        db_session.add(team_member)
 
     try:
-        session.commit()
+        db_session.commit()
     except SQLAlchemyError as err:
         logging.error('Team member %s cannot be inserted into DB. Error: %s', team_member.full_name, err)
 
