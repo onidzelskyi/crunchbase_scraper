@@ -29,6 +29,13 @@ mkvirtualenv -p python3.5 crunchbase_scraper
 pip install -r requirements.txt
 ```
 
+Run
+===
+
+```bash
+python crunchbase_scraper.py
+```
+
 Tests
 ==
 
